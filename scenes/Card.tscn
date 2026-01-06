@@ -1,0 +1,19 @@
+[gd_scene load_steps=3 format=3 uid="uid://ccqmqsssip3y3"]
+
+[ext_resource type="Script" uid="uid://o33fg7j0fgcv" path="res://scripts/Card.gd" id="1_6u4wf"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_yiag5"]
+size = Vector2(104, 152)
+
+[node name="Card" type="StaticBody2D" groups=["deck"]]
+script = ExtResource("1_6u4wf")
+
+[node name="ColorRect" type="ColorRect" parent="."]
+offset_right = 104.0
+offset_bottom = 152.0
+mouse_filter = 2
+color = Color(1, 0.37254903, 1, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(52, 76)
+shape = SubResource("RectangleShape2D_yiag5")
