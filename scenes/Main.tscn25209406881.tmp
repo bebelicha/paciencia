@@ -1,0 +1,55 @@
+[gd_scene load_steps=4 format=3 uid="uid://nwve1pgngy5n"]
+
+[ext_resource type="Script" uid="uid://c7o5t8e8jhctg" path="res://scripts/Main.gd" id="1_rvslj"]
+[ext_resource type="PackedScene" uid="uid://bkkngkccafcvr" path="res://scenes/Aim.tscn" id="2_0bbpv"]
+[ext_resource type="PackedScene" uid="uid://jb8enxtiwmif" path="res://scenes/Slot.tscn" id="3_0bbpv"]
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_rvslj")
+
+[node name="Aim" parent="." instance=ExtResource("2_0bbpv")]
+
+[node name="Slot" parent="." instance=ExtResource("3_0bbpv")]
+position = Vector2(100, 150)
+type = 0
+
+[node name="Slot2" parent="." instance=ExtResource("3_0bbpv")]
+position = Vector2(100, 300)
+type = 1
+
+[node name="Slot3" parent="." instance=ExtResource("3_0bbpv")]
+position = Vector2(1100, 150)
+type = 2
+
+[node name="Slot4" parent="." instance=ExtResource("3_0bbpv")]
+position = Vector2(1100, 300)
+type = 2
+
+[node name="Slot5" parent="." instance=ExtResource("3_0bbpv")]
+position = Vector2(1100, 450)
+type = 2
+
+[node name="Slot6" parent="." instance=ExtResource("3_0bbpv")]
+position = Vector2(1100, 600)
+type = 2
+
+[node name="Slot7" parent="." instance=ExtResource("3_0bbpv")]
+position = Vector2(300, 150)
+
+[node name="Slot8" parent="." instance=ExtResource("3_0bbpv")]
+position = Vector2(400, 150)
+
+[node name="Slot9" parent="." instance=ExtResource("3_0bbpv")]
+position = Vector2(500, 150)
+
+[node name="Slot10" parent="." instance=ExtResource("3_0bbpv")]
+position = Vector2(600, 150)
+
+[node name="Slot11" parent="." instance=ExtResource("3_0bbpv")]
+position = Vector2(700, 150)
+
+[node name="Slot12" parent="." instance=ExtResource("3_0bbpv")]
+position = Vector2(800, 150)
+
+[node name="Slot13" parent="." instance=ExtResource("3_0bbpv")]
+position = Vector2(900, 150)
