@@ -102,6 +102,7 @@ theme_override_font_sizes/font_size = 36
 text = "Moves: 0"
 horizontal_alignment = 1
 
+
 [node name="btnUndo" type="ColorRect" parent="HUD" groups=["ui"]]
 offset_left = 300.0
 offset_top = 650.0
@@ -139,6 +140,7 @@ theme_override_font_sizes/font_size = 36
 text = "New Game"
 
 [node name="VictoryScreen" type="Node2D" parent="."]
+visible = false
 z_index = 2000
 
 [node name="TextureRect" type="TextureRect" parent="VictoryScreen"]

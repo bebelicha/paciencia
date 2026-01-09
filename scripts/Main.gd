@@ -24,7 +24,18 @@ var gameActive = false
 @onready var lblFinalTime = $VictoryScreen/FinalTimeLabel
 @onready var lblFinalMoves = $VictoryScreen/FinalMovesLabel
 
+var gaze_bridge: Node
+var last_mouse_pos = Vector2.ZERO
+var using_head_input = false
+
 func _ready():
+	gaze_bridge = preload("res://scripts/ConversiaGazeBridge.gd").new()
+	add_child(gaze_bridge)
+	
+	var viewport_size = get_viewport_rect().size
+	last_mouse_pos = viewport_size / 2
+	$Aim.global_position = last_mouse_pos
+	
 	organizeSlots()
 	$Aim.done.connect(onAimDone)
 	createDeck()
@@ -50,6 +61,12 @@ func newGame():
 	moves = 0
 	time = 0.0
 	history.clear()
+	if handStack.size() > 0:
+		for c in handStack:
+			c.queue_free()
+	hand = null
+	handStack.clear()
+	$Aim.holding_card = false
 	gameActive = true
 	victoryScreen.visible = false
 	updateUI()
@@ -102,7 +119,39 @@ func updateVisuals(slot):
 			else: off += 20
 		else: off = 0
 
+func _input(event):
+	if not gaze_bridge.is_ready or not gaze_bridge.is_head_tracking_active():
+		if event is InputEventMouseMotion or event is InputEventScreenDrag:
+			last_mouse_pos = event.position
+			using_head_input = false
+		elif event is InputEventScreenTouch and event.pressed:
+			last_mouse_pos = event.position
+			using_head_input = false
+
 func _process(delta):
+	var viewport_size = get_viewport_rect().size
+	var yaw = gaze_bridge.gaze_data.get('headYaw', 0.5)
+	var pitch = gaze_bridge.gaze_data.get('headPitch', 0.5)
+	var roll = gaze_bridge.gaze_data.get('headRoll', 0.5)
+	var aim_source = "mouse"
+	var applied_pos = last_mouse_pos
+
+	if gaze_bridge.is_ready and gaze_bridge.is_head_tracking_active():
+		var clamped_yaw = clamp(yaw, 0.0, 1.0)
+		var clamped_pitch = clamp(pitch, 0.0, 1.0)
+		$Aim.global_position = Vector2(
+			clamped_yaw * viewport_size.x,
+			clamped_pitch * viewport_size.y
+		)
+		applied_pos = $Aim.global_position
+		using_head_input = true
+		aim_source = "head"
+	elif last_mouse_pos != Vector2.ZERO:
+		$Aim.global_position = last_mouse_pos
+		applied_pos = last_mouse_pos
+		using_head_input = false
+		aim_source = "mouse"
+	
 	if hand != null:
 		var pos = $Aim.global_position + Vector2(0, 15)
 		for i in range(handStack.size()):
@@ -132,6 +181,8 @@ func checkWin():
 		lblFinalScore.text = "Score: " + str(score)
 		lblFinalTime.text = "Time: %02d:%02d" % [minutes, seconds]
 		lblFinalMoves.text = "Moves: " + str(moves)
+		
+		gaze_bridge.send_stats(score, "1")
 		
 		victoryScreen.visible = true
 
@@ -164,8 +215,10 @@ func onAimDone(obj):
 					updateUI()
 	else:
 		var target = null
-		if obj.is_in_group("slot"): target = obj
-		elif obj.is_in_group("deck"): target = obj.slotParent
+		if obj.is_in_group("slot"): 
+			target = obj
+		elif obj.is_in_group("deck"): 
+			target = obj.slotParent
 		
 		if target != null:
 			dropCard(target)
@@ -222,6 +275,7 @@ func pickCard(card):
 		handOrigin = slot
 		handStack = slot.cards.slice(index)
 		slot.cards.resize(index)
+		$Aim.holding_card = true
 		updateVisuals(slot)
 
 func dropCard(target):
@@ -261,6 +315,7 @@ func dropCard(target):
 		
 		hand = null
 		handStack.clear()
+		$Aim.holding_card = false
 		updateUI()
 		checkWin()
 	else:
@@ -271,6 +326,7 @@ func cancel():
 		handOrigin.cards.append(c)
 	updateVisuals(handOrigin)
 	hand = null
+	$Aim.holding_card = false
 	handStack.clear()
 
 func onUndo():

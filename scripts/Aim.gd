@@ -6,11 +6,13 @@ signal done(obj)
 
 var target = null
 var t = 0.0
-var limit = 0.4
+var limit = 1.0
+var holding_card = false
+
+func _ready():
+	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
 
 func _physics_process(delta):
-	global_position = get_global_mouse_position()
-	
 	var bestUI = null
 	var uiNodes = get_tree().get_nodes_in_group("ui")
 	
@@ -46,17 +48,24 @@ func _physics_process(delta):
 	
 	if bestUI != null:
 		finalTarget = bestUI
-	elif bestCard != null:
-		finalTarget = bestCard
-	elif bestSlot != null:
-		if bestCard == null:
-			finalTarget = bestSlot
+	elif not holding_card:
+		if bestCard != null:
+			if bestCard.isFaceUp or (bestCard == bestCard.slotParent.getTopCard()):
+				finalTarget = bestCard
+		elif bestSlot != null:
+			if bestSlot.type == 0:
+				finalTarget = bestSlot
+	else:
+		if bestCard != null:
+			finalTarget = bestCard.slotParent
+		elif bestSlot != null:
+			if bestSlot.type == 2 or bestSlot.type == 3:
+				finalTarget = bestSlot
 			
 	if finalTarget != null:
 		if target != finalTarget:
 			target = finalTarget
 			t = 0.0
-			bar.visible = true
 		
 		t += delta
 		bar.value = (t / limit) * 100
@@ -65,12 +74,10 @@ func _physics_process(delta):
 			t = 0.0
 			emit_signal("done", target)
 			bar.value = 0
-			bar.visible = false
 	else:
 		reset()
 
 func reset():
 	target = null
 	t = 0.0
-	bar.visible = false
 	bar.value = 0

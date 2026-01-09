@@ -11,17 +11,17 @@ radius = 5.0
 z_index = 100
 script = ExtResource("1_6f18u")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-position = Vector2(41, 20)
-shape = SubResource("CircleShape2D_16dml")
-
 [node name="Bar" type="TextureProgressBar" parent="."]
-offset_left = 41.0
+offset_left = 20.0
 offset_top = 20.0
-offset_right = 541.0
+offset_right = 520.0
 offset_bottom = 520.0
 scale = Vector2(0.1, 0.1)
 pivot_offset = Vector2(-65, -45)
 fill_mode = 4
 texture_under = ExtResource("1_ibrwh")
 texture_progress = ExtResource("2_il6wn")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(20, 20)
+shape = SubResource("CircleShape2D_16dml")
