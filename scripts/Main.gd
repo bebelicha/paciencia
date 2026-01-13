@@ -23,6 +23,7 @@ var gameActive = false
 @onready var lblFinalScore = $VictoryScreen/FinalScoreLabel
 @onready var lblFinalTime = $VictoryScreen/FinalTimeLabel
 @onready var lblFinalMoves = $VictoryScreen/FinalMovesLabel
+@onready var win_reset_timer = $VictoryScreen/WinResetTimer
 
 var gaze_bridge: Node
 var last_mouse_pos = Vector2.ZERO
@@ -31,6 +32,7 @@ var using_head_input = false
 func _ready():
 	gaze_bridge = preload("res://scripts/ConversiaGazeBridge.gd").new()
 	add_child(gaze_bridge)
+	win_reset_timer.timeout.connect(newGame)
 	
 	var viewport_size = get_viewport_rect().size
 	last_mouse_pos = viewport_size / 2
@@ -57,6 +59,8 @@ func createDeck():
 			deck.append({"rank": r, "suit": s})
 
 func newGame():
+	if not win_reset_timer.is_stopped():
+		win_reset_timer.stop()
 	score = 0
 	moves = 0
 	time = 0.0
@@ -74,26 +78,35 @@ func newGame():
 	for s in tableau:
 		for c in s.cards: c.queue_free()
 		s.cards.clear()
+		s.face_down_cards.clear()
 	for s in foundation:
 		for c in s.cards: c.queue_free()
 		s.cards.clear()
+		s.face_down_cards.clear()
 	if stock != null:
 		for c in stock.cards: c.queue_free()
 		stock.cards.clear()
+		stock.face_down_cards.clear()
 	if waste != null:
 		for c in waste.cards: c.queue_free()
 		waste.cards.clear()
+		waste.face_down_cards.clear()
 	
 	createDeck()
 	deck.shuffle()
 	
 	for i in range(tableau.size()):
 		var slot = tableau[i]
+		slot.face_down_cards.clear()
 		for j in range(i + 1):
 			if deck.size() > 0:
 				var data = deck.pop_back()
-				var card = spawn(data, slot)
-				if j == i: card.flip()
+				if j == i:
+					var card = spawn(data, slot)
+					card.flip()
+				else:
+					slot.face_down_cards.append(data)
+		updateVisuals(slot)
 	
 	while deck.size() > 0:
 		spawn(deck.pop_back(), stock)
@@ -109,15 +122,23 @@ func spawn(data, slot):
 	return card
 
 func updateVisuals(slot):
-	var off = 0
+	if slot.type == 3:
+		slot.update_hidden_label()
 	for i in range(slot.cards.size()):
 		var c = slot.cards[i]
 		c.z_index = 10 + i 
-		c.position = slot.position + Vector2(0, off)
 		if slot.type == 3:
-			if c.isFaceUp: off += 40
-			else: off += 20
-		else: off = 0
+			c.position = slot.position + Vector2(0, 40 * i)
+		else:
+			c.position = slot.position
+
+func reveal_from_hidden(slot):
+	if slot.face_down_cards.size() == 0:
+		return null
+	var data = slot.face_down_cards.pop_back()
+	var card = spawn(data, slot)
+	card.flip()
+	return card
 
 func _input(event):
 	if not gaze_bridge.is_ready or not gaze_bridge.is_head_tracking_active():
@@ -185,12 +206,13 @@ func checkWin():
 		gaze_bridge.send_stats(score, "1")
 		
 		victoryScreen.visible = true
+		win_reset_timer.start(30)
 
 func onAimDone(obj):
 	if obj.is_in_group("ui"):
 		if obj.name == "btnUndo":
 			onUndo()
-		elif obj.name == "btnNew" or obj.name == "btnVictoryNew":
+		elif obj.name == "btnNew":
 			newGame()
 		return
 
@@ -289,12 +311,13 @@ func dropCard(target):
 		score += points
 		if score < 0: score = 0
 		moves += 1
-		
 		var revealed = null
-		var top = handOrigin.getTopCard()
-		if top != null and not top.isFaceUp:
-			top.flip()
-			revealed = top
+		var revealed_from_hidden = false
+		var revealed_data = null
+		if handOrigin.type == 3 and handOrigin.cards.size() == 0 and handOrigin.face_down_cards.size() > 0:
+			revealed = reveal_from_hidden(handOrigin)
+			revealed_from_hidden = true
+			revealed_data = {"rank": revealed.rank, "suit": revealed.suit}
 			score += 5
 			points += 5
 		
@@ -310,6 +333,8 @@ func dropCard(target):
 			"src": handOrigin,
 			"dst": target,
 			"revealed": revealed,
+			"revealed_from_hidden": revealed_from_hidden,
+			"revealed_data": revealed_data,
 			"score": points
 		})
 		
@@ -343,8 +368,12 @@ func onUndo():
 			act.dst.cards.erase(c)
 			act.src.cards.append(c)
 			c.slotParent = act.src
-		
-		if act.revealed != null:
+		if act.revealed_from_hidden and act.revealed != null:
+			act.src.cards.erase(act.revealed)
+			act.revealed.queue_free()
+			if act.revealed_data != null:
+				act.src.face_down_cards.append(act.revealed_data)
+		elif act.revealed != null:
 			act.revealed.flip()
 			
 		updateVisuals(act.src)
