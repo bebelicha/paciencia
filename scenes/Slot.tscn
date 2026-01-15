@@ -4,31 +4,32 @@
 [ext_resource type="Texture2D" uid="uid://cyamlfqxxof1v" path="res://assets/duelClick.png" id="2_mlwvr"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_5f2j7"]
-size = Vector2(66, 98)
+size = Vector2(100, 120)
 
 [node name="Slot" type="StaticBody2D" groups=["slot"]]
 z_index = -1
-position = Vector2(0, 9)
 script = ExtResource("1_ic0fu")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
-position = Vector2(43, 49)
+position = Vector2(72.00001, 71)
 scale = Vector2(0.1, 0.1)
 texture = ExtResource("2_mlwvr")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 modulate = Color(1, 1, 1, 0.5882353)
-position = Vector2(43, 49)
+position = Vector2(72, 70)
 shape = SubResource("RectangleShape2D_5f2j7")
 
 [node name="HiddenLabel" type="Label" parent="."]
-offset_left = 12.0
-offset_top = -20.0
-offset_right = 74.0
-offset_bottom = 0.0
+visible = false
+modulate = Color(0, 0, 0, 1)
+self_modulate = Color(0, 0, 0, 1)
+offset_left = 40.0
+offset_top = -31.0
+offset_right = 102.0
+offset_bottom = 19.0
 theme_override_colors/font_color = Color(1, 1, 1, 0.7843137)
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 36
 text = "0"
 horizontal_alignment = 1
 vertical_alignment = 1
-visible = false

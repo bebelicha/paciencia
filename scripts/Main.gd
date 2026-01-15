@@ -14,6 +14,7 @@ var moves = 0
 var time = 0.0
 var history = []
 var gameActive = false
+var victory_elapsed = -1.0
 
 @onready var lblScore = $HUD/ScoreLabel
 @onready var lblTime = $HUD/TimeLabel
@@ -61,6 +62,7 @@ func createDeck():
 func newGame():
 	if not win_reset_timer.is_stopped():
 		win_reset_timer.stop()
+	victory_elapsed = -1.0
 	score = 0
 	moves = 0
 	time = 0.0
@@ -184,6 +186,10 @@ func _process(delta):
 		var minutes = int(time / 60)
 		var seconds = int(time) % 60
 		lblTime.text = "Time: %02d:%02d" % [minutes, seconds]
+	elif victory_elapsed >= 0.0:
+		victory_elapsed += delta
+		if victory_elapsed >= 10.0:
+			newGame()
 
 func updateUI():
 	lblScore.text = "Score: " + str(score)
@@ -206,7 +212,8 @@ func checkWin():
 		gaze_bridge.send_stats(score, "1")
 		
 		victoryScreen.visible = true
-		win_reset_timer.start(30)
+		win_reset_timer.start(10)
+		victory_elapsed = 0.0
 
 func onAimDone(obj):
 	if obj.is_in_group("ui"):
