@@ -7,7 +7,7 @@ signal done(obj)
 var target = null
 var t = 0.0
 var limit = 1.0
-var holding_card = false
+var holdingCard = false
 
 func _ready():
 	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
@@ -48,7 +48,7 @@ func _physics_process(delta):
 	
 	if bestUI != null:
 		finalTarget = bestUI
-	elif not holding_card:
+	elif not holdingCard:
 		if bestCard != null:
 			if bestCard.isFaceUp or (bestCard == bestCard.slotParent.getTopCard()):
 				finalTarget = bestCard

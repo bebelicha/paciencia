@@ -14,7 +14,7 @@ var moves = 0
 var time = 0.0
 var history = []
 var gameActive = false
-var victory_elapsed = -1.0
+var victoryElapsed = -1.0
 
 @onready var lblScore = $HUD/ScoreLabel
 @onready var lblTime = $HUD/TimeLabel
@@ -24,20 +24,20 @@ var victory_elapsed = -1.0
 @onready var lblFinalScore = $VictoryScreen/FinalScoreLabel
 @onready var lblFinalTime = $VictoryScreen/FinalTimeLabel
 @onready var lblFinalMoves = $VictoryScreen/FinalMovesLabel
-@onready var win_reset_timer = $VictoryScreen/WinResetTimer
+@onready var winResetTimer = $VictoryScreen/WinResetTimer
 
-var gaze_bridge: Node
-var last_mouse_pos = Vector2.ZERO
-var using_head_input = false
+var gazeBridge: Node
+var lastMousePos = Vector2.ZERO
+var usingHeadInput = false
 
 func _ready():
-	gaze_bridge = preload("res://scripts/ConversiaGazeBridge.gd").new()
-	add_child(gaze_bridge)
-	win_reset_timer.timeout.connect(newGame)
-	
-	var viewport_size = get_viewport_rect().size
-	last_mouse_pos = viewport_size / 2
-	$Aim.global_position = last_mouse_pos
+	gazeBridge = preload("res://scripts/ConversiaGazeBridge.gd").new()
+	add_child(gazeBridge)
+	winResetTimer.timeout.connect(newGame)
+
+	var viewportSize = get_viewport_rect().size
+	lastMousePos = viewportSize / 2
+	$Aim.global_position = lastMousePos
 	
 	organizeSlots()
 	$Aim.done.connect(onAimDone)
@@ -48,10 +48,14 @@ func organizeSlots():
 	var all = get_tree().get_nodes_in_group("slot")
 	all.sort_custom(func(a, b): return a.position.x < b.position.x)
 	for s in all:
-		if s.type == 0: stock = s
-		elif s.type == 1: waste = s
-		elif s.type == 2: foundation.append(s)
-		elif s.type == 3: tableau.append(s)
+		if s.type == 0:
+			stock = s
+		elif s.type == 1:
+			waste = s
+		elif s.type == 2:
+			foundation.append(s)
+		elif s.type == 3:
+			tableau.append(s)
 
 func createDeck():
 	deck.clear()
@@ -60,9 +64,9 @@ func createDeck():
 			deck.append({"rank": r, "suit": s})
 
 func newGame():
-	if not win_reset_timer.is_stopped():
-		win_reset_timer.stop()
-	victory_elapsed = -1.0
+	if not winResetTimer.is_stopped():
+		winResetTimer.stop()
+	victoryElapsed = -1.0
 	score = 0
 	moves = 0
 	time = 0.0
@@ -72,7 +76,7 @@ func newGame():
 			c.queue_free()
 	hand = null
 	handStack.clear()
-	$Aim.holding_card = false
+	$Aim.holdingCard = false
 	gameActive = true
 	victoryScreen.visible = false
 	updateUI()
@@ -80,26 +84,26 @@ func newGame():
 	for s in tableau:
 		for c in s.cards: c.queue_free()
 		s.cards.clear()
-		s.face_down_cards.clear()
+		s.faceDownCards.clear()
 	for s in foundation:
 		for c in s.cards: c.queue_free()
 		s.cards.clear()
-		s.face_down_cards.clear()
+		s.faceDownCards.clear()
 	if stock != null:
 		for c in stock.cards: c.queue_free()
 		stock.cards.clear()
-		stock.face_down_cards.clear()
+		stock.faceDownCards.clear()
 	if waste != null:
 		for c in waste.cards: c.queue_free()
 		waste.cards.clear()
-		waste.face_down_cards.clear()
+		waste.faceDownCards.clear()
 	
 	createDeck()
 	deck.shuffle()
 	
 	for i in range(tableau.size()):
 		var slot = tableau[i]
-		slot.face_down_cards.clear()
+		slot.faceDownCards.clear()
 		for j in range(i + 1):
 			if deck.size() > 0:
 				var data = deck.pop_back()
@@ -107,7 +111,7 @@ func newGame():
 					var card = spawn(data, slot)
 					card.flip()
 				else:
-					slot.face_down_cards.append(data)
+					slot.faceDownCards.append(data)
 		updateVisuals(slot)
 	
 	while deck.size() > 0:
@@ -125,7 +129,7 @@ func spawn(data, slot):
 
 func updateVisuals(slot):
 	if slot.type == 3:
-		slot.update_hidden_label()
+		slot.updateHiddenLabel()
 	for i in range(slot.cards.size()):
 		var c = slot.cards[i]
 		c.z_index = 10 + i 
@@ -134,46 +138,39 @@ func updateVisuals(slot):
 		else:
 			c.position = slot.position
 
-func reveal_from_hidden(slot):
-	if slot.face_down_cards.size() == 0:
+func revealFromHidden(slot):
+	if slot.faceDownCards.size() == 0:
 		return null
-	var data = slot.face_down_cards.pop_back()
+	var data = slot.faceDownCards.pop_back()
 	var card = spawn(data, slot)
 	card.flip()
 	return card
 
 func _input(event):
-	if not gaze_bridge.is_ready or not gaze_bridge.is_head_tracking_active():
+	if not gazeBridge.isReady or not gazeBridge.isHeadTrackingActive():
 		if event is InputEventMouseMotion or event is InputEventScreenDrag:
-			last_mouse_pos = event.position
-			using_head_input = false
+			lastMousePos = event.position
+			usingHeadInput = false
 		elif event is InputEventScreenTouch and event.pressed:
-			last_mouse_pos = event.position
-			using_head_input = false
+			lastMousePos = event.position
+			usingHeadInput = false
 
 func _process(delta):
-	var viewport_size = get_viewport_rect().size
-	var yaw = gaze_bridge.gaze_data.get('headYaw', 0.5)
-	var pitch = gaze_bridge.gaze_data.get('headPitch', 0.5)
-	var roll = gaze_bridge.gaze_data.get('headRoll', 0.5)
-	var aim_source = "mouse"
-	var applied_pos = last_mouse_pos
+	var viewportSize = get_viewport_rect().size
+	var yaw = gazeBridge.gazeData.get('headYaw', 0.5)
+	var pitch = gazeBridge.gazeData.get('headPitch', 0.5)
 
-	if gaze_bridge.is_ready and gaze_bridge.is_head_tracking_active():
-		var clamped_yaw = clamp(yaw, 0.0, 1.0)
-		var clamped_pitch = clamp(pitch, 0.0, 1.0)
+	if gazeBridge.isReady and gazeBridge.isHeadTrackingActive():
+		var clampedYaw = clamp(yaw, 0.0, 1.0)
+		var clampedPitch = clamp(pitch, 0.0, 1.0)
 		$Aim.global_position = Vector2(
-			clamped_yaw * viewport_size.x,
-			clamped_pitch * viewport_size.y
+			clampedYaw * viewportSize.x,
+			clampedPitch * viewportSize.y
 		)
-		applied_pos = $Aim.global_position
-		using_head_input = true
-		aim_source = "head"
-	elif last_mouse_pos != Vector2.ZERO:
-		$Aim.global_position = last_mouse_pos
-		applied_pos = last_mouse_pos
-		using_head_input = false
-		aim_source = "mouse"
+		usingHeadInput = true
+	elif lastMousePos != Vector2.ZERO:
+		$Aim.global_position = lastMousePos
+		usingHeadInput = false
 	
 	if hand != null:
 		var pos = $Aim.global_position + Vector2(0, 15)
@@ -186,9 +183,9 @@ func _process(delta):
 		var minutes = int(time / 60)
 		var seconds = int(time) % 60
 		lblTime.text = "Time: %02d:%02d" % [minutes, seconds]
-	elif victory_elapsed >= 0.0:
-		victory_elapsed += delta
-		if victory_elapsed >= 10.0:
+	elif victoryElapsed >= 0.0:
+		victoryElapsed += delta
+		if victoryElapsed >= 10.0:
 			newGame()
 
 func updateUI():
@@ -209,11 +206,11 @@ func checkWin():
 		lblFinalTime.text = "Time: %02d:%02d" % [minutes, seconds]
 		lblFinalMoves.text = "Moves: " + str(moves)
 		
-		gaze_bridge.send_stats(score, "1")
+		gazeBridge.sendStats(score, "1")
 		
 		victoryScreen.visible = true
-		win_reset_timer.start(10)
-		victory_elapsed = 0.0
+		winResetTimer.start(10)
+		victoryElapsed = 0.0
 
 func onAimDone(obj):
 	if obj.is_in_group("ui"):
@@ -304,7 +301,7 @@ func pickCard(card):
 		handOrigin = slot
 		handStack = slot.cards.slice(index)
 		slot.cards.resize(index)
-		$Aim.holding_card = true
+		$Aim.holdingCard = true
 		updateVisuals(slot)
 
 func dropCard(target):
@@ -319,12 +316,12 @@ func dropCard(target):
 		if score < 0: score = 0
 		moves += 1
 		var revealed = null
-		var revealed_from_hidden = false
-		var revealed_data = null
-		if handOrigin.type == 3 and handOrigin.cards.size() == 0 and handOrigin.face_down_cards.size() > 0:
-			revealed = reveal_from_hidden(handOrigin)
-			revealed_from_hidden = true
-			revealed_data = {"rank": revealed.rank, "suit": revealed.suit}
+		var revealedFromHidden = false
+		var revealedData = null
+		if handOrigin.type == 3 and handOrigin.cards.size() == 0 and handOrigin.faceDownCards.size() > 0:
+			revealed = revealFromHidden(handOrigin)
+			revealedFromHidden = true
+			revealedData = {"rank": revealed.rank, "suit": revealed.suit}
 			score += 5
 			points += 5
 		
@@ -340,14 +337,14 @@ func dropCard(target):
 			"src": handOrigin,
 			"dst": target,
 			"revealed": revealed,
-			"revealed_from_hidden": revealed_from_hidden,
-			"revealed_data": revealed_data,
+			"revealedFromHidden": revealedFromHidden,
+			"revealedData": revealedData,
 			"score": points
 		})
 		
 		hand = null
 		handStack.clear()
-		$Aim.holding_card = false
+		$Aim.holdingCard = false
 		updateUI()
 		checkWin()
 	else:
@@ -358,7 +355,7 @@ func cancel():
 		handOrigin.cards.append(c)
 	updateVisuals(handOrigin)
 	hand = null
-	$Aim.holding_card = false
+	$Aim.holdingCard = false
 	handStack.clear()
 
 func onUndo():
@@ -375,11 +372,11 @@ func onUndo():
 			act.dst.cards.erase(c)
 			act.src.cards.append(c)
 			c.slotParent = act.src
-		if act.revealed_from_hidden and act.revealed != null:
+		if act.revealedFromHidden and act.revealed != null:
 			act.src.cards.erase(act.revealed)
 			act.revealed.queue_free()
-			if act.revealed_data != null:
-				act.src.face_down_cards.append(act.revealed_data)
+			if act.revealedData != null:
+				act.src.faceDownCards.append(act.revealedData)
 		elif act.revealed != null:
 			act.revealed.flip()
 			
