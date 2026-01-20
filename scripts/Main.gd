@@ -30,7 +30,32 @@ var gazeBridge: Node
 var lastMousePos = Vector2.ZERO
 var usingHeadInput = false
 
+# Scan/Varredura mode state
+var scanMode = false
+var scanLevel = "root" # root, menu, confirmNew, mesa, fundacao
+var scanTargets: Array = []
+var scanIndex = 0
+var scanTimer: Timer
+var scanHighlight: ColorRect
+var scanStepSeconds = 5.0
+var pendingNewConfirm = false
 var scanDialogLabel: Label
+
+func _ready():
+	gazeBridge = preload("res://scripts/ConversiaGazeBridge.gd").new()
+	add_child(gazeBridge)
+	winResetTimer.timeout.connect(newGame)
+	setupScanHelpers()
+
+	var viewportSize = get_viewport_rect().size
+	lastMousePos = viewportSize / 2
+	$Aim.global_position = lastMousePos
+
+	organizeSlots()
+	$Aim.done.connect(onAimDone)
+	createDeck()
+	newGame()
+
 func _ready():
 	gazeBridge = preload("res://scripts/ConversiaGazeBridge.gd").new()
 	add_child(gazeBridge)
