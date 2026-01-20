@@ -5,13 +5,19 @@ var gazeData = {
 	'headPitch': 0.5,
 	'headRoll': 0.5
 }
+var gazePoint: Vector2 = Vector2(0.5, 0.5)
+var gazeStatus: String = ""
 var isReady = false
 var conversiaConnected = false
 var lastAnalogUpdate = 0
+var lastGazeUpdate = 0
 var analogCount = 0
 var lastSnapshotStr = ""
 var recentLogs: Array[String] = []
 var readyPingTimer: Timer
+var lastSelectSeq = -1
+var pendingSelect = false
+var preferredTriggerName: String = ""
 
 func _init():
 	if OS.get_name() == "Web":
@@ -24,12 +30,25 @@ func _ready():
 			window.EngineJS.GazeBridge = window.EngineJS.GazeBridge || {};
 			if (!window.EngineJS.GazeBridge._listenerAttached) {
 				window.EngineJS.GazeBridge._listenerAttached = true;
-				window.EngineJS.GazeBridge.lastAnalog = {};
+				window.EngineJS.GazeBridge.lastAnalog = window.EngineJS.GazeBridge.lastAnalog || {};
+				window.EngineJS.GazeBridge.lastGaze = window.EngineJS.GazeBridge.lastGaze || { x: 0.5, y: 0.5, status: '', timestamp: Date.now() };
+				window.EngineJS.GazeBridge.lastSelect = window.EngineJS.GazeBridge.lastSelect || null;
+				window.EngineJS.GazeBridge.lastSelectSeq = window.EngineJS.GazeBridge.lastSelectSeq || 0;
+				window.EngineJS.GazeBridge.primaryTrigger = window.EngineJS.GazeBridge.primaryTrigger || '';
 				window.addEventListener('message', function(ev) {
 					var msg = ev.data;
 					if (!msg || typeof msg.type !== 'string') return;
 					if (msg.type === 'init') {
 						window.EngineJS.GazeBridge.connected = true;
+						if (Array.isArray(msg.triggers)) {
+							for (var i = 0; i < msg.triggers.length; i++) {
+								var trig = msg.triggers[i];
+								if (trig && trig.primary) {
+									window.EngineJS.GazeBridge.primaryTrigger = trig.id || '';
+									break;
+								}
+							}
+						}
 						try {
 							window.parent.postMessage({ type: 'ready', timestamp: Date.now() }, '*');
 						} catch (e) {}
@@ -45,6 +64,26 @@ func _ready():
 						}
 						window.EngineJS.GazeBridge.lastAnalog = snapshot;
 						window.__conversiaAnalog = snapshot; // compat
+						return;
+					}
+					if (msg.type === 'gazeData' && msg.data) {
+						var gx = Number(msg.data.x);
+						var gy = Number(msg.data.y);
+						if (isFinite(gx) && isFinite(gy)) {
+							window.EngineJS.GazeBridge.lastGaze = { x: gx, y: gy, status: msg.data.status || '', timestamp: Date.now() };
+						}
+						return;
+					}
+					if (msg.type === 'trigger') {
+						window.EngineJS.GazeBridge.lastSelectSeq = (window.EngineJS.GazeBridge.lastSelectSeq || 0) + 1;
+						window.EngineJS.GazeBridge.lastSelect = {
+							name: msg.name || '',
+							state: msg.state || '',
+							kind: msg.kind || '',
+							label: msg.label || '',
+							level: msg.level,
+							timestamp: msg.timestamp || Date.now()
+						};
 					}
 				}, false);
 			}
@@ -59,22 +98,37 @@ func _process(_delta):
 	conversiaConnected = JavaScriptBridge.eval("(window.EngineJS && window.EngineJS.GazeBridge && window.EngineJS.GazeBridge.connected) ? true : false")
 	var snap = getSnapshot()
 	if snap == null:
-		return
+		snap = {}
+	if snap.size() > 0:
+		lastAnalogUpdate = Time.get_ticks_msec()
 	conversiaConnected = true
 	stopReadyPing()
 	lastSnapshotStr = str(snap)
 	var now = Time.get_ticks_msec()
+	var yawVal = null
 	if snap.has("headYaw"):
-		gazeData['headYaw'] = snap['headYaw']
-		lastAnalogUpdate = now
+		yawVal = snap["headYaw"]
+	elif snap.has("headRoll"):
+		yawVal = snap["headRoll"]
+	var pitchVal = null
 	if snap.has("headPitch"):
-		gazeData['headPitch'] = snap['headPitch']
+		pitchVal = snap["headPitch"]
+	elif snap.has("headYaw"):
+		pitchVal = snap["headYaw"]
+	if yawVal != null:
+		gazeData['headYaw'] = yawVal
+		lastAnalogUpdate = now
+	if pitchVal != null:
+		gazeData['headPitch'] = pitchVal
 		lastAnalogUpdate = now
 	if snap.has("headRoll"):
 		gazeData['headRoll'] = snap['headRoll']
 		lastAnalogUpdate = now
-	analogCount += 1
+	if snap.size() > 0:
+		analogCount += 1
 	pushLog(now)
+	pullGazeSnapshot()
+	pullSelectEvent()
 
 func receiveAnalogData(data: Dictionary):
 	if data.has('name') and data.has('value'):
@@ -84,7 +138,17 @@ func receiveAnalogData(data: Dictionary):
 
 func isHeadTrackingActive() -> bool:
 	var currentTime = Time.get_ticks_msec()
-	return (currentTime - lastAnalogUpdate) < 500
+	return (currentTime - lastAnalogUpdate) < 2500
+
+func isGazeReliable() -> bool:
+	var currentTime = Time.get_ticks_msec()
+	if (currentTime - lastGazeUpdate) > 700:
+		return false
+	var statusLower = gazeStatus.to_lower()
+	if statusLower == "ok" or statusLower == "tracking":
+		return true
+	# Fallback: if status is empty but we have recent data, allow
+	return statusLower == ""
 
 func sendStats(score: int, level: String = "1"):
 	if isReady:
@@ -140,6 +204,19 @@ func sendReadyPing():
 		try { window.parent.postMessage({ type: 'ready', timestamp: Date.now() }, '*'); } catch (e) {}
 	""")
 
+func isGazeActive() -> bool:
+	var currentTime = Time.get_ticks_msec()
+	return (currentTime - lastGazeUpdate) < 500
+
+func getGazePoint() -> Vector2:
+	return gazePoint
+
+func consumeSelectRequest() -> bool:
+	if pendingSelect:
+		pendingSelect = false
+		return true
+	return false
+
 func getSnapshot():
 	var snapJson = JavaScriptBridge.eval("(window.EngineJS && window.EngineJS.GazeBridge && window.EngineJS.GazeBridge.lastAnalog) ? JSON.stringify(window.EngineJS.GazeBridge.lastAnalog) : (window.__conversiaAnalog ? JSON.stringify(window.__conversiaAnalog) : null)")
 	if snapJson == null:
@@ -148,3 +225,47 @@ func getSnapshot():
 	if typeof(parsed) == TYPE_DICTIONARY:
 		return parsed
 	return null
+
+func pullGazeSnapshot():
+	var gazeJson = JavaScriptBridge.eval("(window.EngineJS && window.EngineJS.GazeBridge && window.EngineJS.GazeBridge.lastGaze) ? JSON.stringify(window.EngineJS.GazeBridge.lastGaze) : null")
+	if gazeJson == null:
+		return
+	var parsed = JSON.parse_string(gazeJson)
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return
+	if not parsed.has("x") or not parsed.has("y"):
+		return
+	var gx = clamp(float(parsed.get("x", 0.5)), 0.0, 1.0)
+	var gy = clamp(float(parsed.get("y", 0.5)), 0.0, 1.0)
+	gazePoint = Vector2(gx, gy)
+	gazeStatus = str(parsed.get("status", ""))
+	lastGazeUpdate = Time.get_ticks_msec()
+
+func pullSelectEvent():
+	var selectJson = JavaScriptBridge.eval("(window.EngineJS && window.EngineJS.GazeBridge && window.EngineJS.GazeBridge.lastSelectSeq !== undefined) ? JSON.stringify({ seq: window.EngineJS.GazeBridge.lastSelectSeq || 0, evt: window.EngineJS.GazeBridge.lastSelect, primary: window.EngineJS.GazeBridge.primaryTrigger || '' }) : null")
+	if selectJson == null:
+		return
+	var parsed = JSON.parse_string(selectJson)
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return
+	var seq = int(parsed.get("seq", -1))
+	if seq == -1 or seq == lastSelectSeq:
+		return
+	lastSelectSeq = seq
+	var primaryVal = parsed.get("primary", "")
+	if typeof(primaryVal) == TYPE_STRING:
+		var cleaned = primaryVal.strip_edges()
+		if cleaned.length() > 0:
+			preferredTriggerName = cleaned
+	var evt = parsed.get("evt", null)
+	if typeof(evt) != TYPE_DICTIONARY:
+		return
+	var state = str(evt.get("state", ""))
+	var name = str(evt.get("name", ""))
+	var kind = str(evt.get("kind", ""))
+	if preferredTriggerName != "" and name != preferredTriggerName:
+		return
+	if kind != "" and kind != "movement":
+		return
+	if state == "start":
+		pendingSelect = true

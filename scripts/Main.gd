@@ -30,6 +30,7 @@ var gazeBridge: Node
 var lastMousePos = Vector2.ZERO
 var usingHeadInput = false
 
+var scanDialogLabel: Label
 func _ready():
 	gazeBridge = preload("res://scripts/ConversiaGazeBridge.gd").new()
 	add_child(gazeBridge)
@@ -147,7 +148,7 @@ func revealFromHidden(slot):
 	return card
 
 func _input(event):
-	if not gazeBridge.isReady or not gazeBridge.isHeadTrackingActive():
+	if not gazeBridge.isReady or (not gazeBridge.isHeadTrackingActive() and not gazeBridge.isGazeActive()):
 		if event is InputEventMouseMotion or event is InputEventScreenDrag:
 			lastMousePos = event.position
 			usingHeadInput = false
@@ -159,8 +160,17 @@ func _process(delta):
 	var viewportSize = get_viewport_rect().size
 	var yaw = gazeBridge.gazeData.get('headYaw', 0.5)
 	var pitch = gazeBridge.gazeData.get('headPitch', 0.5)
+	var usingHead = gazeBridge.isReady and gazeBridge.isHeadTrackingActive()
+	var usingGaze = gazeBridge.isGazeReliable() and not usingHead
 
-	if gazeBridge.isReady and gazeBridge.isHeadTrackingActive():
+	if usingGaze:
+		var gp = gazeBridge.getGazePoint()
+		$Aim.global_position = Vector2(
+			clamp(gp.x, 0.0, 1.0) * viewportSize.x,
+			clamp(gp.y, 0.0, 1.0) * viewportSize.y
+		)
+		usingHeadInput = true
+	elif usingHead:
 		var clampedYaw = clamp(yaw, 0.0, 1.0)
 		var clampedPitch = clamp(pitch, 0.0, 1.0)
 		$Aim.global_position = Vector2(
@@ -177,6 +187,13 @@ func _process(delta):
 		for i in range(handStack.size()):
 			handStack[i].global_position = pos + Vector2(0, 40 * i)
 			handStack[i].z_index = 200 + i
+
+	if gazeBridge.consumeSelectRequest():
+		var aim = $Aim
+		var target = aim.target
+		if target != null:
+			aim.reset()
+			onAimDone(target)
 	
 	if gameActive:
 		time += delta
