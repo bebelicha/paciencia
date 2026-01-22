@@ -37,6 +37,8 @@ func _physics_process(delta):
 	for result in results:
 		var obj = result.collider
 		if obj.is_in_group("deck"):
+			if obj.has_meta("dragging") and obj.get_meta("dragging") == true:
+				continue
 			if obj.z_index > highestZ:
 				highestZ = obj.z_index
 				bestCard = obj

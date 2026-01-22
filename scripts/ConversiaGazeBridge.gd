@@ -147,7 +147,6 @@ func isGazeReliable() -> bool:
 	var statusLower = gazeStatus.to_lower()
 	if statusLower == "ok" or statusLower == "tracking":
 		return true
-	# Fallback: if status is empty but we have recent data, allow
 	return statusLower == ""
 
 func sendStats(score: int, level: String = "1"):

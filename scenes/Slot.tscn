@@ -4,7 +4,7 @@
 [ext_resource type="Texture2D" uid="uid://cyamlfqxxof1v" path="res://assets/duelClick.png" id="2_mlwvr"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_5f2j7"]
-size = Vector2(100, 120)
+size = Vector2(70, 100)
 
 [node name="Slot" type="StaticBody2D" groups=["slot"]]
 z_index = -1
