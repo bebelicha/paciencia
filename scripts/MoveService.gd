@@ -69,8 +69,6 @@ func pickCard(card):
 		main.handStack=slot.cards.slice(index)
 		setDraggingState(main.handStack,true)
 		slot.cards.resize(index)
-		if main.aim!=null:
-			main.aim.holdingCard=true
 		updateVisuals(slot)
 func dropCard(target):
 	if main.cardService.checkCardPlacement(main.hand,target):
@@ -103,8 +101,6 @@ func dropCard(target):
 		var movedCards=main.handStack.duplicate()
 		main.hand=null
 		main.handStack.clear()
-		if main.aim!=null:
-			main.aim.holdingCard=false
 		repairOrphanCards()
 		reflowAllSlots()
 		main.history.append({"type":"move","cards":movedCards,"src":main.handOrigin,"dst":target,"revealed":revealed,"revealedFromHidden":revealedFromHidden,"revealedData":revealedData,"score":points})
@@ -167,8 +163,6 @@ func cancel():
 	repairOrphanCards()
 	reflowAllSlots()
 	main.hand=null
-	if main.aim!=null:
-		main.aim.holdingCard=false
 	main.handStack.clear()
 func setDraggingState(cards:Array,dragging:bool)->void:
 	for c in cards:

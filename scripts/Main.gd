@@ -22,21 +22,21 @@ var victoryElapsed=-1.0
 @onready var lblFinalMoves=$VictoryScreen/FinalMovesLabel
 @onready var winResetTimer=$VictoryScreen/WinResetTimer
 var gazeBridge:Node
-var lastMousePos=Vector2.ZERO
-var usingHeadInput=false
 var integrityTimer:=0.0
 const enableIntegrityCheck:=true
+var lastMousePressed:=false
 var cardService
 var scanService
 var moveService
 var uiService
+var selectLogLabel:Label
+var selectCounter:=0
 @onready var confirmDialog:Control=$ConfirmNew
 @onready var confirmYes:Control=$ConfirmNew/Yes
 @onready var confirmNo:Control=$ConfirmNew/No
 @onready var confirmBackDialog:Control=$ConfirmBack
 @onready var confirmBackYes:Control=$ConfirmBack/Yes
 @onready var confirmBackNo:Control=$ConfirmBack/No
-@onready var aim:Node=get_node_or_null("Aim")
 func _ready():
 	gazeBridge=preload("res://scripts/ConversiaGazeBridge.gd").new()
 	add_child(gazeBridge)
@@ -52,16 +52,12 @@ func _ready():
 	uiService=preload("res://scripts/UiService.gd").new()
 	add_child(uiService)
 	uiService.setup(self)
+	setupSelectLog()
 	winResetTimer.timeout.connect(newGame)
-	var viewportSize=get_viewport_rect().size
-	lastMousePos=viewportSize/2
-	if aim!=null:
-		aim.global_position=lastMousePos
 	organizeSlots()
-	if aim!=null:
-		aim.done.connect(onAimDone)
 	createDeck()
 	newGame()
+	scanService.startScan("root")
 func organizeSlots():
 	var all=get_tree().get_nodes_in_group("slot")
 	all.sort_custom(func(a,b): return a.position.x<b.position.x)
@@ -95,8 +91,6 @@ func newGame():
 			c.queue_free()
 	hand=null
 	handStack.clear()
-	if aim!=null:
-		aim.holdingCard=false
 	gameActive=true
 	victoryScreen.visible=false
 	uiService.updateUi()
@@ -137,81 +131,81 @@ func newGame():
 	while deck.size()>0:
 		moveService.spawn(deck.pop_back(),stock)
 	moveService.reflowAllSlots()
-func _input(event):
-	if not gazeBridge.isReady or (not gazeBridge.isHeadTrackingActive() and not gazeBridge.isGazeActive()):
-		if event is InputEventMouseMotion or event is InputEventScreenDrag:
-			lastMousePos=event.position
-			usingHeadInput=false
-		elif event is InputEventScreenTouch and event.pressed:
-			lastMousePos=event.position
-			usingHeadInput=false
-		elif event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and event.pressed:
-			if scanService.scanMode:
-				scanService.handleScanSelect()
-			else:
-				if aim!=null:
-					var target=aim.target
-					if target!=null:
-						aim.reset()
-						onAimDone(target)
-func _process(delta):
-	var viewportSize=get_viewport_rect().size
-	var yaw=gazeBridge.gazeData.get("headYaw",0.5)
-	var pitch=gazeBridge.gazeData.get("headPitch",0.5)
-	var usingHead=gazeBridge.isReady and gazeBridge.isHeadTrackingActive()
-	var usingGaze=gazeBridge.isReady and gazeBridge.isGazeReliable() and not usingHead
-	var shouldScan=(not usingHead) and (not usingGaze)
-	if shouldScan:
-		if not scanService.scanMode:
-			scanService.startScan("root")
+func handleSelectClick():
+	logSelect("mouse")
+	scanService.handleScanSelect()
+func setupSelectLog():
+	var hud=$HUD
+	selectLogLabel=Label.new()
+	selectLogLabel.name="SelectLogLabel"
+	selectLogLabel.text="Select: aguardando"
+	selectLogLabel.position=Vector2(20,120)
+	selectLogLabel.size=Vector2(520,24)
+	selectLogLabel.autowrap_mode=TextServer.AUTOWRAP_OFF
+	selectLogLabel.clip_text=true
+	hud.add_child(selectLogLabel)
+func logSelect(source:String, evt:Dictionary={}):
+	selectCounter+=1
+	var targetName:=""
+	if scanService!=null and scanService.scanTargets.size()>0:
+		var t=scanService.scanTargets[scanService.scanIndex]
+		if t.has("name"):
+			targetName=str(t["name"])
+	var level:String=""
+	if scanService!=null:
+		level=scanService.scanLevel
+	var timeMs:=Time.get_ticks_msec()
+	var latencyMs:int = int(evt.get("latencyMs", -1))
+	if latencyMs < 0:
+		var evtTs:int = int(evt.get("timestamp", 0))
+		if evtTs > 0:
+			latencyMs = timeMs - evtTs
+		else:
+			latencyMs = -1
+	var movementLabel := ""
+	if evt.has("label"):
+		movementLabel = str(evt.get("label", "")).strip_edges()
+	if movementLabel == "":
+		movementLabel = str(evt.get("name", "")).strip_edges()
+	var stateLabel := ""
+	var stateVal := str(evt.get("state", "")).strip_edges()
+	if stateVal == "start":
+		stateLabel = "ativo"
+	elif stateVal == "end":
+		stateLabel = "inativo"
 	else:
-		if scanService.scanMode:
-			scanService.stopScan()
-		if usingGaze:
-			var gp=gazeBridge.getGazePoint()
-			if aim!=null:
-				aim.global_position=Vector2(clamp(gp.x,0.0,1.0)*viewportSize.x,clamp(gp.y,0.0,1.0)*viewportSize.y)
-			usingHeadInput=true
-		elif usingHead:
-			var clampedYaw=clamp(yaw,0.0,1.0)
-			var clampedPitch=clamp(pitch,0.0,1.0)
-			if aim!=null:
-				aim.global_position=Vector2(clampedYaw*viewportSize.x,clampedPitch*viewportSize.y)
-			usingHeadInput=true
-		elif lastMousePos!=Vector2.ZERO:
-			if aim!=null:
-				aim.global_position=lastMousePos
-			usingHeadInput=false
-	if aim!=null:
-		aim.visible=not scanService.scanMode
-	if scanService.scanMode and hand!=null:
+		stateLabel = "desconhecido"
+	var triggerInfo := ""
+	if movementLabel != "":
+		triggerInfo = " trigger=%s (%s)" % [movementLabel, stateLabel]
+	var msg:="#%d %s%s level=%s target=%s t=%d"%[selectCounter,source,triggerInfo,level,targetName,timeMs]
+	if latencyMs >= 0:
+		msg += " latency=%dms" % latencyMs
+	if selectLogLabel!=null:
+		selectLogLabel.text="Select: %s"%msg
+	print("SelectLog: ",msg)
+func _process(delta):
+	if not scanService.scanMode:
+		scanService.startScan("root")
+	if hand!=null:
 		hand=null
 		handStack.clear()
-		if aim!=null:
-			aim.holdingCard=false
-	if hand!=null:
-		var aimPos=lastMousePos
-		if aim!=null:
-			aimPos=aim.global_position
-		var pos=aimPos+Vector2(0,15)
-		for i in range(handStack.size()):
-			handStack[i].global_position=pos+Vector2(0,40*i)
-			handStack[i].z_index=200+i
-	if gazeBridge.consumeSelectRequest():
-		if scanService.scanMode:
+	if gazeBridge != null:
+		while true:
+			var evt = gazeBridge.popSelectEvent()
+			if evt.size() == 0:
+				break
+			logSelect("conversia", evt)
 			scanService.handleScanSelect()
-		else:
-			if aim!=null:
-				var target=aim.target
-				if target!=null:
-					aim.reset()
-					onAimDone(target)
+	var pressed=Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+	if pressed and not lastMousePressed:
+		handleSelectClick()
+	lastMousePressed=pressed
 	if enableIntegrityCheck:
 		integrityTimer+=delta
 		if integrityTimer>=1.0:
 			integrityTimer=0.0
-			var isHolding=aim!=null and aim.holdingCard
-			if hand==null and handStack.size()==0 and not isHolding:
+			if hand==null and handStack.size()==0:
 				moveService.validateAndRepairCards()
 	if gameActive:
 		time+=delta
@@ -222,53 +216,9 @@ func _process(delta):
 		victoryElapsed+=delta
 		if victoryElapsed>=10.0:
 			newGame()
-func onAimDone(obj):
-	if obj.is_in_group("ui"):
-		if obj.name=="btnUndo":
-			onUndo()
-		elif obj.name=="btnNew":
-			newGame()
-		elif obj.name=="btnBack":
-			scanService.startScan("confirmBack")
-		elif obj.name=="Yes" and obj.get_parent()==confirmBackDialog:
-			goToGamesMenu()
-		elif obj.name=="No" and obj.get_parent()==confirmBackDialog:
-			confirmBackDialog.visible=false
-			if scanService.scanMode:
-				scanService.startScan("root")
-		return
-	if not gameActive:
-		return
-	if hand==null:
-		var isStock=false
-		if obj==stock:
-			isStock=true
-		if obj.is_in_group("deck") and obj.slotParent.type==0:
-			isStock=true
-		if isStock:
-			moveService.drawCard()
-			return
-		if obj.is_in_group("deck"):
-			if obj.isFaceUp:
-				moveService.pickCard(obj)
-			else:
-				if obj==obj.slotParent.getTopCard():
-					obj.flip()
-					score+=5
-					uiService.updateUi()
-	else:
-		var target=null
-		if obj.is_in_group("slot"):
-			target=obj
-		elif obj.is_in_group("deck"):
-			target=obj.slotParent
-		if target!=null:
-			moveService.dropCard(target)
-		else:
-			moveService.cancel()
 func goToGamesMenu():
 	if OS.get_name()=="Web":
-		JavaScriptBridge.eval("(function(){if(window.EngineJS&&EngineJS.Games&&EngineJS.Games.open){EngineJS.Games.open();return;}if(window.EngineJS&&EngineJS.goToGames){EngineJS.goToGames();return;}if(window.goToGames){window.goToGames();return;}if(window.location){window.location.href='/games';}})();")
+		JavaScriptBridge.eval("(function(){try{var msg={type:'command',command:'exit',reason:'user',timestamp:Date.now()};if(window.parent&&window.parent!==window){window.parent.postMessage(msg,'*');}if(window.top&&window.top!==window.parent){window.top.postMessage(msg,'*');}}catch(e){};if(window.EngineJS&&EngineJS.Games&&EngineJS.Games.open){EngineJS.Games.open();return;}if(window.EngineJS&&EngineJS.goToGames){EngineJS.goToGames();return;}if(window.goToGames){window.goToGames();return;}if(window.location){window.location.href='/games';}})();")
 	else:
 		print("Back to games requested (non-web environment)")
 func performStockAction():

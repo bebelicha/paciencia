@@ -1,15 +1,29 @@
 extends Node
 class_name ScanService
+class ScanHighlight:
+	extends Node2D
+	var rect_size:Vector2=Vector2.ZERO
+	var fill_color:Color=Color(0.11,0.73,0.94,0.18)
+	var border_color:Color=Color(0.11,0.73,0.94,0.9)
+	var border_width:float=4.0
+	func _draw():
+		if rect_size==Vector2.ZERO:
+			return
+		draw_rect(Rect2(Vector2.ZERO,rect_size),fill_color)
+		draw_rect(Rect2(Vector2.ZERO,rect_size),border_color,false,border_width)
 var main
 var scanMode=false
 var scanLevel="root"
 var scanTargets:Array=[]
 var scanIndex=0
 var scanTimer:Timer
-var scanHighlight:ColorRect
-var scanStepSeconds=1.0
+var scanLayer:CanvasLayer
+var scanHighlight:ScanHighlight
+var scanStepSeconds=3.0
 var scanBackRect:=Rect2(Vector2(20,20),Vector2(140,50))
 var selectedTableSlot=null
+var lastSelectTime:= -1.0
+const selectCooldown:=0.0
 func setup(mainRef):
 	main=mainRef
 	scanTimer=Timer.new()
@@ -17,12 +31,14 @@ func setup(mainRef):
 	scanTimer.wait_time=scanStepSeconds
 	scanTimer.timeout.connect(onScanStep)
 	add_child(scanTimer)
-	scanHighlight=ColorRect.new()
-	scanHighlight.color=Color(0.11,0.73,0.94,0.35)
+	scanLayer=CanvasLayer.new()
+	scanLayer.layer=100
+	main.get_tree().root.add_child.call_deferred(scanLayer)
+	scanHighlight=ScanHighlight.new()
 	scanHighlight.visible=false
-	scanHighlight.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	scanHighlight.z_index=3500
-	add_child(scanHighlight)
+	scanHighlight.set_as_top_level(true)
+	scanLayer.add_child.call_deferred(scanHighlight)
 	main.confirmDialog.visible=false
 func startScan(level="root"):
 	scanMode=true
@@ -56,10 +72,15 @@ func applyScanHighlight():
 		scanHighlight.visible=false
 		return
 	var rect:Rect2=scanTargets[scanIndex]["rect"]
-	scanHighlight.position=rect.position
-	scanHighlight.size=rect.size
+	scanHighlight.global_position=rect.position
+	scanHighlight.rect_size=rect.size
+	scanHighlight.queue_redraw()
 	scanHighlight.visible=true
 func handleScanSelect():
+	var nowSec:=Time.get_ticks_msec()/1000.0
+	if lastSelectTime>0.0 and (nowSec-lastSelectTime)<selectCooldown:
+		return
+	lastSelectTime=nowSec
 	if scanTargets.size()==0:
 		return
 	var target=scanTargets[scanIndex]
@@ -247,10 +268,11 @@ func buildScanTargets(level:String)->Array:
 func rectForControl(ctrl:Control)->Rect2:
 	if ctrl==null:
 		return Rect2(Vector2.ZERO,Vector2(10,10))
-	var ctrlSize=ctrl.size
-	if ctrlSize==Vector2.ZERO:
-		ctrlSize=ctrl.get_combined_minimum_size()
-	return Rect2(ctrl.global_position,ctrlSize)
+	var rect:=ctrl.get_global_rect()
+	if rect.size==Vector2.ZERO:
+		var ctrlSize=ctrl.get_combined_minimum_size()
+		return Rect2(ctrl.global_position,ctrlSize)
+	return rect
 func rectUnion(rects:Array)->Rect2:
 	if rects.size()==0:
 		return Rect2(Vector2.ZERO,Vector2(10,10))

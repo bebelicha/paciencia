@@ -16,7 +16,10 @@ var lastSnapshotStr = ""
 var recentLogs: Array[String] = []
 var readyPingTimer: Timer
 var lastSelectSeq = -1
-var pendingSelect = false
+var selectQueue:Array = []
+const selectQueueMax:=32
+var recentSelectSeqs:Array = []
+const recentSelectSeqsMax:=20
 var preferredTriggerName: String = ""
 
 func _init():
@@ -34,6 +37,7 @@ func _ready():
 				window.EngineJS.GazeBridge.lastGaze = window.EngineJS.GazeBridge.lastGaze || { x: 0.5, y: 0.5, status: '', timestamp: Date.now() };
 				window.EngineJS.GazeBridge.lastSelect = window.EngineJS.GazeBridge.lastSelect || null;
 				window.EngineJS.GazeBridge.lastSelectSeq = window.EngineJS.GazeBridge.lastSelectSeq || 0;
+				window.EngineJS.GazeBridge.selectQueue = window.EngineJS.GazeBridge.selectQueue || [];
 				window.EngineJS.GazeBridge.primaryTrigger = window.EngineJS.GazeBridge.primaryTrigger || '';
 				window.addEventListener('message', function(ev) {
 					var msg = ev.data;
@@ -75,15 +79,29 @@ func _ready():
 						return;
 					}
 					if (msg.type === 'trigger') {
-						window.EngineJS.GazeBridge.lastSelectSeq = (window.EngineJS.GazeBridge.lastSelectSeq || 0) + 1;
-						window.EngineJS.GazeBridge.lastSelect = {
+						var seq = Number(msg.seq);
+						if (!isFinite(seq)) {
+							seq = (window.EngineJS.GazeBridge.lastSelectSeq || 0) + 1;
+						}
+						var nowTs = Date.now();
+						var payload = {
+							seq: seq,
 							name: msg.name || '',
 							state: msg.state || '',
 							kind: msg.kind || '',
 							label: msg.label || '',
 							level: msg.level,
-							timestamp: msg.timestamp || Date.now()
+							primary: window.EngineJS.GazeBridge.primaryTrigger || '',
+							timestamp: msg.timestamp || nowTs,
+							recvTimestamp: nowTs,
+							latencyMs: nowTs - (msg.timestamp || nowTs)
 						};
+						window.EngineJS.GazeBridge.lastSelectSeq = seq;
+						window.EngineJS.GazeBridge.lastSelect = payload;
+						window.EngineJS.GazeBridge.selectQueue.push(payload);
+						try {
+							window.parent.postMessage({ type: 'triggerAck', seq: seq, timestamp: Date.now(), triggerTimestamp: msg.timestamp || 0 }, '*');
+						} catch (e) {}
 					}
 				}, false);
 			}
@@ -101,8 +119,8 @@ func _process(_delta):
 		snap = {}
 	if snap.size() > 0:
 		lastAnalogUpdate = Time.get_ticks_msec()
-	conversiaConnected = true
-	stopReadyPing()
+	if conversiaConnected:
+		stopReadyPing()
 	lastSnapshotStr = str(snap)
 	var now = Time.get_ticks_msec()
 	var yawVal = null
@@ -141,6 +159,8 @@ func isHeadTrackingActive() -> bool:
 	return (currentTime - lastAnalogUpdate) < 2500
 
 func isGazeReliable() -> bool:
+	if not conversiaConnected:
+		return false
 	var currentTime = Time.get_ticks_msec()
 	if (currentTime - lastGazeUpdate) > 700:
 		return false
@@ -210,11 +230,15 @@ func isGazeActive() -> bool:
 func getGazePoint() -> Vector2:
 	return gazePoint
 
-func consumeSelectRequest() -> bool:
-	if pendingSelect:
-		pendingSelect = false
-		return true
-	return false
+func popSelectEvent() -> Dictionary:
+	if selectQueue.size() == 0:
+		return {}
+	return selectQueue.pop_front()
+
+func enqueueSelectEvent(evt: Dictionary):
+	selectQueue.append(evt)
+	if selectQueue.size() > selectQueueMax:
+		selectQueue.pop_front()
 
 func getSnapshot():
 	var snapJson = JavaScriptBridge.eval("(window.EngineJS && window.EngineJS.GazeBridge && window.EngineJS.GazeBridge.lastAnalog) ? JSON.stringify(window.EngineJS.GazeBridge.lastAnalog) : (window.__conversiaAnalog ? JSON.stringify(window.__conversiaAnalog) : null)")
@@ -241,30 +265,44 @@ func pullGazeSnapshot():
 	lastGazeUpdate = Time.get_ticks_msec()
 
 func pullSelectEvent():
-	var selectJson = JavaScriptBridge.eval("(window.EngineJS && window.EngineJS.GazeBridge && window.EngineJS.GazeBridge.lastSelectSeq !== undefined) ? JSON.stringify({ seq: window.EngineJS.GazeBridge.lastSelectSeq || 0, evt: window.EngineJS.GazeBridge.lastSelect, primary: window.EngineJS.GazeBridge.primaryTrigger || '' }) : null")
+	var selectJson = JavaScriptBridge.eval("(window.EngineJS && window.EngineJS.GazeBridge && window.EngineJS.GazeBridge.selectQueue && window.EngineJS.GazeBridge.selectQueue.length) ? JSON.stringify(window.EngineJS.GazeBridge.selectQueue.shift()) : null")
 	if selectJson == null:
 		return
 	var parsed = JSON.parse_string(selectJson)
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return
 	var seq = int(parsed.get("seq", -1))
-	if seq == -1 or seq == lastSelectSeq:
+	if seq == -1:
 		return
 	lastSelectSeq = seq
+	if recentSelectSeqs.has(seq):
+		return
+	recentSelectSeqs.append(seq)
+	if recentSelectSeqs.size() > recentSelectSeqsMax:
+		recentSelectSeqs.pop_front()
 	var primaryVal = parsed.get("primary", "")
 	if typeof(primaryVal) == TYPE_STRING:
 		var cleaned = primaryVal.strip_edges()
 		if cleaned.length() > 0:
 			preferredTriggerName = cleaned
-	var evt = parsed.get("evt", null)
-	if typeof(evt) != TYPE_DICTIONARY:
-		return
-	var state = str(evt.get("state", ""))
-	var name = str(evt.get("name", ""))
-	var kind = str(evt.get("kind", ""))
-	if preferredTriggerName != "" and name != preferredTriggerName:
+	if preferredTriggerName == "":
+		pass
+	var state = str(parsed.get("state", ""))
+	var name = str(parsed.get("name", ""))
+	var kind = str(parsed.get("kind", ""))
+	if preferredTriggerName == "" or name != preferredTriggerName:
 		return
 	if kind != "" and kind != "movement":
 		return
-	if state == "start":
-		pendingSelect = true
+	if state == "start" or state == "end":
+		var evtTimestamp = int(parsed.get("timestamp", 0))
+		enqueueSelectEvent({
+			"seq": seq,
+			"timestamp": evtTimestamp,
+			"latencyMs": int(parsed.get("latencyMs", -1)),
+			"name": name,
+			"kind": kind,
+			"state": state,
+			"level": parsed.get("level", null),
+			"label": parsed.get("label", "")
+		})
